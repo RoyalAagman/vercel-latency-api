@@ -1,25 +1,27 @@
 import json
 import os
 import statistics
+from http.server import BaseHTTPRequestHandler
 
 DATA_FILE = os.path.join(os.path.dirname(__file__), '..', 'q-vercel-latency.json')
 with open(DATA_FILE, 'r') as f:
     RAW_DATA = json.load(f)
 
-def handler(request):
-    # CORS headers for every response
-    cors_headers = {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type',
-        'Content-Type': 'application/json'
-    }
+class handler(BaseHTTPRequestHandler):
 
-    if request.method == 'OPTIONS':
-        return Response('', 200, cors_headers)
+    def _cors(self):
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Access-Control-Allow-Methods', 'POST, OPTIONS')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
 
-    if request.method == 'POST':
-        body = json.loads(request.body)
+    def do_OPTIONS(self):
+        self.send_response(200)
+        self._cors()
+        self.end_headers()
+
+    def do_POST(self):
+        length = int(self.headers.get('Content-Length', 0))
+        body = json.loads(self.rfile.read(length))
         regions = body.get('regions', [])
         threshold_ms = body.get('threshold_ms', 180)
 
@@ -39,4 +41,10 @@ def handler(request):
                 "breaches": sum(1 for l in latencies if l > threshold_ms)
             }
 
-        return Response(json.dumps(result), 200, cors_headers)
+        out = json.dumps(result).encode()
+        self.send_response(200)
+        self._cors()
+        self.send_header('Content-Type', 'application/json')
+        self.send_header('Content-Length', str(len(out)))
+        self.end_headers()
+        self.wfile.write(out)
